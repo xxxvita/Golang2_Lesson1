@@ -18,34 +18,22 @@ func (e *myWrappError) Error() string {
 	return fmt.Sprintf("Ошибка: %s, получена в %s", e.text, e.timeEvent)
 }
 
-// Пустая ошибка для проброса между функцией, получающая панику и main
-var myErr error
-
 func main() {
-	err := funcWrappPanic()
-
+	err := funcWithPanic()
 	if err != nil {
 		fmt.Println(err)
 	}
 }
 
-func funcWrappPanic() error {
-	funcWithPanic()
-
-	if myErr != nil {
-		return myErr
-	}
-
-	return nil
-}
-
-func funcWithPanic() {
+func funcWithPanic() (err error) {
 	defer func() {
 		if v := recover(); v != nil {
-			myErr = NewMyWrappError(fmt.Sprintf("Перехвачена ошибка (%s)", v), time.Now())
+			err = NewMyWrappError(fmt.Sprintf("Перехвачена ошибка (%s)", v), time.Now())
 		}
 	}()
 
 	var a int = 0
 	_ = 1 / a
+
+	return nil
 }

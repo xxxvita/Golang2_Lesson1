@@ -1,51 +1,77 @@
+/*
+Удаляем папку Data со всеми созданными файлами, запускаем программу
+rm -rf Data/ && mkdir Data && go run main.go
+Считаем сколько файлов в папке Data
+ls Data/| wc - l
+*/
+
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 )
 
 const CountFiles = 1000000
+const DirectoryName = "Data/"
+
+// Число уже созданных файлов
+var cntExistsFiles int = 0
 
 // Описатели открытых файлов
-var fRefs []*os.File
+var errorTooManyOpenFiles = errors.New("Ошибка открытия большого числа файлов")
 
 func main() {
-	fRefs = make([]*os.File, CountFiles)
+	err := MakeBlockFiles(DirectoryName, CountFiles)
+	if err != nil {
+		fmt.Printf("Ошибка: %s\n", err)
+	}
 
-	MakeBlockFiles("Data/", CountFiles)
-	fmt.Println("Один миллион файлов созданы")
+	fmt.Printf("Файлов создано: %d\n", cntExistsFiles)
 }
 
-func MakeBlockFiles(dirName string, CountFiles int) {
-	// Число уже созданных файлов
-	var cntExistsFiles int = 0
-	for cntExistsFiles != CountFiles {
-		MakeFiles(dirName, &cntExistsFiles, CountFiles-cntExistsFiles)
+func MakeBlockFiles(dirName string, CountFiles int) error {
+	cntIteration := 0
+
+	// Открываются блоки файлов до возникновения ошибки или до достижения
+	// открытых файлов числа CountFiles
+	for cntExistsFiles < CountFiles {
+		err := MakeFiles(dirName, &cntExistsFiles, CountFiles-cntExistsFiles)
+		if err != nil {
+			// Если ошибка не связана с числом открытых файлов, то выходим
+			if !errors.Is(err, errorTooManyOpenFiles) {
+				return err
+			}
+		}
+
+		cntIteration++
+		fmt.Printf("Количество итераций: %d. Число созданных файлов: %d\n", cntIteration, cntExistsFiles)
 	}
+
+	return nil
 }
 
 // Создаёт в директории dirName, пустые файлы в количестве cnt, числол успешно созданных
 // файлов возвращает в cntExistsFiles
-func MakeFiles(dirName string, cntExistsFiles *int, cnt int) {
-	defer func() {
-		if v := recover(); v != nil {
-			for i := 0; i < *cntExistsFiles; i++ {
-				if fRefs[i] != nil {
-					fRefs[i].Close()
-					fRefs[i] = nil
-				}
-			}
-		}
-	}()
-
+func MakeFiles(dirName string, cntExistsFiles *int, cnt int) (err error) {
 	for i := 0; i < cnt; i++ {
-		f, err := os.Create(fmt.Sprintf("%s/%d.txt", dirName, *cntExistsFiles+i))
+		f, err := os.Create(fmt.Sprintf("%s/%d.txt", dirName, *cntExistsFiles+1))
 		if err != nil {
-			panic("Ошибка создания файла")
+			if strings.Contains(err.Error(), "too many open files") {
+				return fmt.Errorf("%w, %s", errorTooManyOpenFiles, err)
+			}
+
+			return err
 		}
 
 		*cntExistsFiles = *cntExistsFiles + 1
-		fRefs[*cntExistsFiles] = f
+
+		defer func(f *os.File) {
+			f.Close()
+		}(f)
 	}
+
+	return nil
 }
